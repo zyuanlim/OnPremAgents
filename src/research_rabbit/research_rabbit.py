@@ -1,50 +1,81 @@
 import json
 
-from typing_extensions import Literal
-
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_ollama import ChatOllama
-from langgraph.graph import START, END, StateGraph
+from langgraph.graph import END, START, StateGraph
+from typing_extensions import Literal
 
 from research_rabbit.configuration import Configuration
-from research_rabbit.utils import deduplicate_and_format_sources, tavily_search, format_sources
+from research_rabbit.prompts import (
+    query_writer_instructions,
+    reflection_instructions,
+    summarizer_instructions,
+)
 from research_rabbit.state import SummaryState, SummaryStateInput, SummaryStateOutput
-from research_rabbit.prompts import query_writer_instructions, summarizer_instructions, reflection_instructions
+from research_rabbit.utils import (
+    deduplicate_and_format_sources,
+    format_sources,
+    tavily_search,
+)
 
 # LLM
-llm = ChatOllama(model=Configuration.local_llm, temperature=0)
-llm_json_mode = ChatOllama(model=Configuration.local_llm, temperature=0, format="json")
+llm = ChatOllama(
+    model=Configuration.local_llm,
+    temperature=0,
+    base_url="http://host.docker.internal:11434",
+)
+llm_json_mode = ChatOllama(
+    model=Configuration.local_llm,
+    temperature=0,
+    format="json",
+    base_url="http://host.docker.internal:11434",
+)
 
-# Nodes   
+
+# Nodes
 def generate_query(state: SummaryState):
-    """ Generate a query for web search """
-    
+    """Generate a query for web search"""
+
     # Format the prompt
-    query_writer_instructions_formatted = query_writer_instructions.format(research_topic=state.research_topic)
+    query_writer_instructions_formatted = query_writer_instructions.format(
+        research_topic=state.research_topic
+    )
 
     # Generate a query
     result = llm_json_mode.invoke(
-        [SystemMessage(content=query_writer_instructions_formatted),
-        HumanMessage(content=f"Generate a query for web search:")]
-    )   
+        [
+            SystemMessage(content=query_writer_instructions_formatted),
+            HumanMessage(content=f"Generate a query for web search:"),
+        ]
+    )
     query = json.loads(result.content)
-    
-    return {"search_query": query['query']}
+
+    return {"search_query": query["query"]}
+
 
 def web_research(state: SummaryState):
-    """ Gather information from the web """
-    
+    """Gather information from the web"""
+
     # Search the web
-    search_results = tavily_search(state.search_query, include_raw_content=True, max_results=1)
-    
+    search_results = tavily_search(
+        state.search_query, include_raw_content=True, max_results=1
+    )
+
     # Format the sources
-    search_str = deduplicate_and_format_sources(search_results, max_tokens_per_source=1000)
-    return {"sources_gathered": [format_sources(search_results)], "research_loop_count": state.research_loop_count + 1, "web_research_results": [search_str]}
+    search_str = deduplicate_and_format_sources(
+        search_results, max_tokens_per_source=1000
+    )
+    return {
+        "sources_gathered": [format_sources(search_results)],
+        "research_loop_count": state.research_loop_count + 1,
+        "web_research_results": [search_str],
+    }
+
 
 def summarize_sources(state: SummaryState):
-    """ Summarize the gathered sources """
-    
+    """Summarize the gathered sources"""
+
     # Existing summary
     existing_summary = state.running_summary
 
@@ -66,45 +97,68 @@ def summarize_sources(state: SummaryState):
 
     # Run the LLM
     result = llm.invoke(
-        [SystemMessage(content=summarizer_instructions),
-        HumanMessage(content=human_message_content)]
+        [
+            SystemMessage(content=summarizer_instructions),
+            HumanMessage(content=human_message_content),
+        ]
     )
 
     running_summary = result.content
     return {"running_summary": running_summary}
 
+
 def reflect_on_summary(state: SummaryState):
-    """ Reflect on the summary and generate a follow-up query """
+    """Reflect on the summary and generate a follow-up query"""
 
     # Generate a query
     result = llm_json_mode.invoke(
-        [SystemMessage(content=reflection_instructions.format(research_topic=state.research_topic)),
-        HumanMessage(content=f"Identify a knowledge gap and generate a follow-up web search query based on our existing knowledge: {state.running_summary}")]
-    )   
+        [
+            SystemMessage(
+                content=reflection_instructions.format(
+                    research_topic=state.research_topic
+                )
+            ),
+            HumanMessage(
+                content=f"Identify a knowledge gap and generate a follow-up web search query based on our existing knowledge: {state.running_summary}"
+            ),
+        ]
+    )
     follow_up_query = json.loads(result.content)
 
     # Overwrite the search query
-    return {"search_query": follow_up_query['follow_up_query']}
+    return {"search_query": follow_up_query["follow_up_query"]}
+
 
 def finalize_summary(state: SummaryState):
-    """ Finalize the summary """
-    
+    """Finalize the summary"""
+
     # Format all accumulated sources into a single bulleted list
     all_sources = "\n".join(source for source in state.sources_gathered)
-    state.running_summary = f"## Summary\n\n{state.running_summary}\n\n ### Sources:\n{all_sources}"
+    state.running_summary = (
+        f"## Summary\n\n{state.running_summary}\n\n ### Sources:\n{all_sources}"
+    )
     return {"running_summary": state.running_summary}
 
-def route_research(state: SummaryState, config: RunnableConfig) -> Literal["finalize_summary", "web_research"]:
-    """ Route the research based on the follow-up query """
+
+def route_research(
+    state: SummaryState, config: RunnableConfig
+) -> Literal["finalize_summary", "web_research"]:
+    """Route the research based on the follow-up query"""
 
     configurable = Configuration.from_runnable_config(config)
     if state.research_loop_count <= configurable.max_web_research_loops:
         return "web_research"
     else:
-        return "finalize_summary" 
-    
-# Add nodes and edges 
-builder = StateGraph(SummaryState, input=SummaryStateInput, output=SummaryStateOutput, config_schema=Configuration)
+        return "finalize_summary"
+
+
+# Add nodes and edges
+builder = StateGraph(
+    SummaryState,
+    input=SummaryStateInput,
+    output=SummaryStateOutput,
+    config_schema=Configuration,
+)
 builder.add_node("generate_query", generate_query)
 builder.add_node("web_research", web_research)
 builder.add_node("summarize_sources", summarize_sources)

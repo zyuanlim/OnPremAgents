@@ -5,15 +5,15 @@
 
 # AI Makerspace: On Prem Agents with LangGraph Platform and Ollama ft. Research Rabbit 🐰
 
-From LangChain's [Research Rabbit](https://github.com/langchain-ai/research-rabbit) repository: 
+From LangChain's [Research Rabbit](https://github.com/langchain-ai/research-rabbit) repository:
 
-> Research Rabbit is a web research and summarization assistant that autonomously goes down the rabbit-hole of any user-defined topic. It uses an LLM to generate a search query based on the user's topic, gets web search results, and uses an LLM to summarize the results. It then uses an LLM to reflect on the summary, examines knowledge gaps, and generates a new search query to fill the gaps. This repeats for a user-defined number of cycles, updating the summary with new information from web search and provided the user a final markdown summary with all sources used. It is configured to run with fully local LLMs (via [Ollama](https://ollama.com/search))! 
+> Research Rabbit is a web research and summarization assistant that autonomously goes down the rabbit-hole of any user-defined topic. It uses an LLM to generate a search query based on the user's topic, gets web search results, and uses an LLM to summarize the results. It then uses an LLM to reflect on the summary, examines knowledge gaps, and generates a new search query to fill the gaps. This repeats for a user-defined number of cycles, updating the summary with new information from web search and provided the user a final markdown summary with all sources used. It is configured to run with fully local LLMs (via [Ollama](https://ollama.com/search))!
 
 You can read more about LangChain's Research Rabbit [here](https://github.com/langchain-ai/research-rabbit)!
 
 ## 🏗️ Using LangGraph Platform Self-Hosted Lite to Deploy LangGraph Application
 
-We'll be using LangChain's Self-Hosted Lite version of LangGraph Platform to deploy our LangGraph application today. 
+We'll be using LangChain's Self-Hosted Lite version of LangGraph Platform to deploy our LangGraph application today.
 
 In order to make things slightly easier - we're going to leverage the `docker compose` method, let's get into what we need to do!
 
@@ -25,11 +25,12 @@ The first thing we'll want to do is as follows:
 uv add langgraph-cli
 ```
 
-> NOTE: If you don't have `uv` installed, you can get it with: ```pip install uv```
+> NOTE: If you don't have `uv` installed, you can get it with: `pip install uv`
 
 Now, we can build the image from our root repository directory with:
 
 ```bash
+source .venv/bin/activate
 langgraph build -t research-rabbit
 ```
 
@@ -43,7 +44,7 @@ touch docker-compose.yaml
 
 Edit the created file with your favourite text editor to reflect the following:
 
-```
+```docker
 volumes:
     langgraph-data:
         driver: local
@@ -93,7 +94,7 @@ Notice that this relies on a `.env` file. Let's fix that now!
 
 Run the following command to copy the sample `.env` file.
 
-```
+```bash
 cp .env.sample .env
 ```
 
@@ -101,9 +102,15 @@ Use your favourite text editor to include your own LangSmith API key and Tavily 
 
 ## 🎉 Conclusion
 
-Now you should have a working instance of your LangGraph application! 
+Run the services via:
+
+```bash
+docker-compose up -d
+```
+
+Now you should have a working instance of your LangGraph application!
 
 You can access your newly deployed system as follows:
 
 - [http://localhost:8123/docs](http://localhost:8123/docs)
-- [https://smith.langchain.com/studio/?baseUrl=127.0.0.1:8123][https://smith.langchain.com/studio/?baseUrl=127.0.0.1:8123]
+- [https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:8123](https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:8123)
